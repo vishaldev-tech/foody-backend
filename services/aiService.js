@@ -1,46 +1,77 @@
 const OpenAI = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-exports.generateRecipe = async (url) => {
-  const prompt = `
-You are a professional chef.
-
-From this video URL: ${url}
-
-Extract a HIGH QUALITY structured recipe.
-
-Rules:
-- Convert vague instructions into clear steps
-- Standardize units (grams, ml)
-- Estimate missing quantities realistically
-- Keep steps simple and actionable
-- Infer cooking time if missing
-
-Return ONLY JSON:
-
-{
-  "title": "",
-  "servings": number,
-  "ingredients": [
-    { "name": "", "quantity": number, "unit": "" }
-  ],
-  "steps": [],
-  "nutrition": {
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number
-  }
-}
-`;
-
-  const response = await openai.chat.completions.create({
+exports.generateRecipe = async (url, metadata) => {
+  // 🥇 STEP 1: RAW EXTRACTION
+  const step1 = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "user",
+        content: `
+Extract a rough recipe from:
+${metadata.title} (${url})
+
+Return JSON with ingredients + steps.
+`,
+      },
+    ],
   });
 
-  return JSON.parse(response.choices[0].message.content);
+  const draft = step1.choices[0].message.content;
+
+  // 🥈 STEP 2: REFINEMENT
+  const step2 = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: `
+Improve this recipe:
+
+${draft}
+
+Fix:
+- quantities (realistic)
+- steps clarity
+- units (grams/ml)
+
+Return clean JSON.
+`,
+      },
+    ],
+  });
+
+  const refined = step2.choices[0].message.content;
+
+  // 🥉 STEP 3: FINAL STRUCTURE + NUTRITION
+  const step3 = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: `
+Convert this into FINAL format:
+
+${refined}
+
+Add:
+- servings
+- cookingTime
+- nutrition estimate
+
+Return STRICT JSON:
+{
+  "title": "",
+  "servings": 2,
+  "ingredients": [],
+  "steps": [],
+  "nutrition": {}
+}
+`,
+      },
+    ],
+  });
+
+  return JSON.parse(step3.choices[0].message.content);
 };

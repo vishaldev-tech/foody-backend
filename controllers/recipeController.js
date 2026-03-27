@@ -1,13 +1,18 @@
+const { extractVideoData } = require("../utils/extractVideoData");
 const { generateRecipe } = require("../services/aiService");
 
+const Recipe = require("../models/Recipe");
+
 exports.extractRecipe = async (req, res) => {
-  try {
-    const { url } = req.body;
+  const { url } = req.body;
 
-    const recipe = await generateRecipe(url);
+  const metadata = await extractVideoData(url);
+  const recipeData = await generateRecipe(url, metadata);
 
-    res.json(recipe);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const recipe = await Recipe.create({
+    ...recipeData,
+    image: metadata.image
+  });
+
+  res.json(recipe);
 };
